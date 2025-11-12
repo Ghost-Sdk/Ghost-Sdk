@@ -1,0 +1,30 @@
+{
+  "name": "ghost-sdk",
+  "version": "0.1.0",
+  "description": "Ultimate privacy SDK for Solana - combining Ghost ZK proofs, Monero ring signatures, and Zcash shielded assets",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "clean": "turbo run clean && rm -rf node_modules",
+    "circuits:build": "cd circuits && ./build.sh",
+    "circuits:test": "cd circuits && npm test",
+    "program:build": "cd programs/ghost-privacy && cargo build-bpf",
+    "program:test": "cd programs/ghost-privacy && cargo test-bpf",
+    "program:deploy": "cd programs/ghost-privacy && solana program deploy target/deploy/ghost_privacy.so"
+  },
+  "devDependencies": {
+    "turbo": "^1.10.16",
+    "typescript": "^5.3.3",
+    "@types/node": "^20.10.5"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}

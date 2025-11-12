@@ -1,0 +1,25 @@
+{
+  "name": "@ghost-sdk/privacy-integration",
+  "version": "1.0.0",
+  "description": "Complete privacy integration with ZK proofs, Merkle trees, and Solana",
+  "main": "privacy-sdk.ts",
+  "scripts": {
+    "cli": "ts-node cli-full-privacy.ts",
+    "build": "tsc",
+    "test": "ts-node test.ts",
+    "demo": "ts-node privacy-sdk.ts"
+  },
+  "dependencies": {
+    "@solana/web3.js": "^1.87.6",
+    "@types/express": "^5.0.5",
+    "borsh": "^0.7.0",
+    "chalk": "^4.1.2",
+    "express": "^4.21.2",
+    "snarkjs": "^0.7.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  }
+}

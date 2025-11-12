@@ -1,0 +1,44 @@
+{
+  "name": "@ghost-sdk/react-native",
+  "version": "0.1.0",
+  "description": "Ghost SDK for React Native (iOS & Android)",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "jest",
+    "clean": "rm -rf dist"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0",
+    "react-native": "^0.72.0"
+  },
+  "dependencies": {
+    "@ghost-sdk/core": "^0.1.0",
+    "@ghost-sdk/monero": "^0.1.0",
+    "@ghost-sdk/zcash": "^0.1.0",
+    "@ghost-sdk/integrations": "^0.1.0",
+    "@solana/web3.js": "^1.87.6",
+    "@react-native-async-storage/async-storage": "^1.21.0",
+    "react-native-keychain": "^8.1.2",
+    "react-native-biometrics": "^3.0.1",
+    "react-native-svg": "^14.1.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.45",
+    "@types/react-native": "^0.72.8",
+    "typescript": "^5.3.3",
+    "jest": "^29.7.0"
+  },
+  "keywords": [
+    "react-native",
+    "ios",
+    "android",
+    "privacy",
+    "solana",
+    "crypto",
+    "ghost",
+    "mobile"
+  ]
+}

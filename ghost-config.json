@@ -1,0 +1,24 @@
+{
+  "version": "1.0.0",
+  "privacyMode": "full",
+  "programId": "3wiFPaYTQZZD71rd4pohPRr8JaFaGN3XaNWLoGSk31Ck",
+  "features": {
+    "clientSideEncryption": true,
+    "commitments": true,
+    "pseudoRingSignatures": true,
+    "zkProofs": true,
+    "onChainPrivacy": true
+  },
+  "network": "devnet",
+  "rpcUrl": "https://api.devnet.solana.com",
+  "zkCircuits": {
+    "transfer": "circuits/build/transfer_0001.zkey",
+    "balance": "circuits/build/balance_0001.zkey",
+    "ringSignature": "circuits/build/ring_signature_0001.zkey"
+  },
+  "verificationKeys": {
+    "transfer": "circuits/build/transfer_verification_key.json",
+    "balance": "circuits/build/balance_verification_key.json",
+    "ringSignature": "circuits/build/ring_signature_verification_key.json"
+  }
+}

@@ -1,0 +1,6 @@
+[target.bpfel-unknown-unknown.dependencies.std]
+features = []
+
+[profile.release]
+opt-level = 3
+lto = true

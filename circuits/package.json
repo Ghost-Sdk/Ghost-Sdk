@@ -1,0 +1,21 @@
+{
+  "name": "@ghost-sdk/circuits",
+  "version": "0.1.0",
+  "description": "ZK circuits for Ghost SDK",
+  "scripts": {
+    "build": "./build.sh",
+    "test": "mocha test/**/*.test.js",
+    "clean": "rm -rf build/ *.r1cs *.wasm *.zkey verification_key.json proof.json public.json"
+  },
+  "devDependencies": {
+    "circom_tester": "^0.0.19",
+    "snarkjs": "^0.7.3",
+    "circomlib": "^2.0.5",
+    "mocha": "^10.2.0",
+    "chai": "^4.3.10"
+  },
+  "main": "index.js",
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
