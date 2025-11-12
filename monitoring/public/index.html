@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ghost Privacy - Monitoring Dashboard</title>
+  <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #fff;
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+
+    h1 {
+      font-size: 2.5em;
+      margin-bottom: 10px;
+      text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+    }
+
+    .subtitle {
+      font-size: 1.1em;
+      opacity: 0.9;
+    }
+
+    .status-bar {
+      background: rgba(255,255,255,0.1);
+      backdrop-filter: blur(10px);
+      border-radius: 15px;
+      padding: 20px;
+      margin-bottom: 30px;
+      display: flex;
+      justify-content: space-around;
+      flex-wrap: wrap;
+      gap: 20px;
+    }
+
+    .status-item {
+      text-align: center;
+    }
+
+    .status-label {
+      font-size: 0.9em;
+      opacity: 0.8;
+      margin-bottom: 5px;
+    }
+
+    .status-value {
+      font-size: 2em;
+      font-weight: bold;
+    }
+
+    .status-value.healthy {
+      color: #4ade80;
+    }
+
+    .status-value.degraded {
+      color: #fbbf24;
+    }
+
+    .status-value.critical {
+      color: #f87171;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+      gap: 20px;
+      margin-bottom: 20px;
+    }
+
+    .card {
+      background: rgba(255,255,255,0.1);
+      backdrop-filter: blur(10px);
+      border-radius: 15px;
+      padding: 25px;
+      box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+    }
+
+    .card h2 {
+      margin-bottom: 20px;
+      font-size: 1.5em;
+      border-bottom: 2px solid rgba(255,255,255,0.3);
+      padding-bottom: 10px;
+    }
+
+    .metric-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 10px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+
+    .metric-label {
+      opacity: 0.8;
+    }
+
+    .metric-value {
+      font-weight: bold;
+    }
+
+    .chart-container {
+      position: relative;
+      height: 300px;
+      margin-top: 20px;
+    }
+
+    .relayer-list {
+      max-height: 400px;
+      overflow-y: auto;
+    }
+
+    .relayer-item {
+      background: rgba(255,255,255,0.05);
+      border-radius: 10px;
+      padding: 15px;
+      margin-bottom: 10px;
+    }
+
+    .relayer-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+
+    .relayer-status {
+      display: inline-block;
+      padding: 5px 15px;
+      border-radius: 20px;
+      font-size: 0.85em;
+      font-weight: bold;
+    }
+
+    .relayer-status.online {
+      background: #4ade80;
+      color: #000;
+    }
+
+    .relayer-status.offline {
+      background: #f87171;
+      color: #000;
+    }
+
+    .relayer-status.degraded {
+      background: #fbbf24;
+      color: #000;
+    }
+
+    .relayer-stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      font-size: 0.9em;
+    }
+
+    .relayer-stat {
+      text-align: center;
+    }
+
+    .health-checks {
+      list-style: none;
+    }
+
+    .health-check {
+      padding: 10px;
+      margin-bottom: 8px;
+      border-radius: 8px;
+      background: rgba(255,255,255,0.05);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .health-icon {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+    }
+
+    .health-icon.healthy {
+      background: #4ade80;
+    }
+
+    .health-icon.degraded {
+      background: #fbbf24;
+    }
+
+    .health-icon.critical {
+      background: #f87171;
+    }
+
+    .last-update {
+      text-align: center;
+      opacity: 0.7;
+      margin-top: 20px;
+      font-size: 0.9em;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .updating {
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>👻 Ghost Privacy Monitoring</h1>
+      <p class="subtitle">Real-time operational metrics and system health</p>
+    </header>
+
+    <div class="status-bar">
+      <div class="status-item">
+        <div class="status-label">Overall Status</div>
+        <div class="status-value" id="overallStatus">-</div>
+      </div>
+      <div class="status-item">
+        <div class="status-label">Total Volume</div>
+        <div class="status-value" id="totalVolume">-</div>
+      </div>
+      <div class="status-item">
+        <div class="status-label">Active Relayers</div>
+        <div class="status-value" id="activeRelayers">-</div>
+      </div>
+      <div class="status-item">
+        <div class="status-label">Avg Proving Time</div>
+        <div class="status-value" id="avgProvingTime">-</div>
+      </div>
+      <div class="status-item">
+        <div class="status-label">Error Rate</div>
+        <div class="status-value" id="errorRate">-</div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <h2>Transaction Activity</h2>
+        <div class="chart-container">
+          <canvas id="transactionChart"></canvas>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Performance Metrics</h2>
+        <div class="metric-row">
+          <span class="metric-label">Avg Proving Time</span>
+          <span class="metric-value" id="detailProvingTime">-</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">Avg Verification Time</span>
+          <span class="metric-value" id="verificationTime">-</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">Avg Transaction Time</span>
+          <span class="metric-value" id="transactionTime">-</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">RPC Latency</span>
+          <span class="metric-value" id="rpcLatency">-</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">Network TPS</span>
+          <span class="metric-value" id="networkTps">-</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Pool Statistics</h2>
+        <div class="metric-row">
+          <span class="metric-label">Total Value Locked</span>
+          <span class="metric-value" id="tvl">-</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">Active Commitments</span>
+          <span class="metric-value" id="activeCommitments">-</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">Spent Nullifiers</span>
+          <span class="metric-value" id="spentNullifiers">-</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">Merkle Tree Depth</span>
+          <span class="metric-value" id="merkleDepth">-</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">Current Block</span>
+          <span class="metric-value" id="blockHeight">-</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>System Health</h2>
+        <ul class="health-checks" id="healthChecks">
+          <li class="health-check">
+            <div class="health-icon"></div>
+            <span>Loading health checks...</span>
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Active Relayers</h2>
+      <div class="relayer-list" id="relayerList">
+        <p style="text-align: center; opacity: 0.7;">No relayer data available</p>
+      </div>
+    </div>
+
+    <div class="last-update">
+      Last updated: <span id="lastUpdate">Never</span>
+    </div>
+  </div>
+
+  <script>
+    const socket = io();
+
+    // Chart instances
+    let transactionChart;
+
+    // Initialize charts
+    function initCharts() {
+      const ctx = document.getElementById('transactionChart').getContext('2d');
+      transactionChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [
+            {
+              label: 'Deposits',
+              data: [],
+              borderColor: '#4ade80',
+              backgroundColor: 'rgba(74, 222, 128, 0.1)',
+              tension: 0.4
+            },
+            {
+              label: 'Withdrawals',
+              data: [],
+              borderColor: '#f87171',
+              backgroundColor: 'rgba(248, 113, 113, 0.1)',
+              tension: 0.4
+            },
+            {
+              label: 'Private Transfers',
+              data: [],
+              borderColor: '#60a5fa',
+              backgroundColor: 'rgba(96, 165, 250, 0.1)',
+              tension: 0.4
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              labels: { color: '#fff' }
+            }
+          },
+          scales: {
+            x: {
+              ticks: { color: '#fff' },
+              grid: { color: 'rgba(255,255,255,0.1)' }
+            },
+            y: {
+              ticks: { color: '#fff' },
+              grid: { color: 'rgba(255,255,255,0.1)' }
+            }
+          }
+        }
+      });
+    }
+
+    // Update metrics
+    function updateMetrics(metrics) {
+      document.getElementById('totalVolume').textContent = (metrics.totalVolume / 1e9).toFixed(2) + ' SOL';
+      document.getElementById('activeRelayers').textContent = metrics.activeRelayers;
+      document.getElementById('avgProvingTime').textContent = metrics.avgProvingTime.toFixed(0) + 'ms';
+      document.getElementById('errorRate').textContent = metrics.errorRate.toFixed(2) + '%';
+
+      document.getElementById('detailProvingTime').textContent = metrics.avgProvingTime.toFixed(0) + 'ms';
+      document.getElementById('verificationTime').textContent = metrics.avgVerificationTime.toFixed(0) + 'ms';
+      document.getElementById('transactionTime').textContent = metrics.avgTransactionTime.toFixed(0) + 'ms';
+      document.getElementById('rpcLatency').textContent = metrics.rpcLatency.toFixed(0) + 'ms';
+      document.getElementById('networkTps').textContent = metrics.tps.toFixed(0);
+
+      document.getElementById('tvl').textContent = (metrics.totalValueLocked / 1e9).toFixed(2) + ' SOL';
+      document.getElementById('activeCommitments').textContent = metrics.activeCommitments.toLocaleString();
+      document.getElementById('spentNullifiers').textContent = metrics.spentNullifiers.toLocaleString();
+      document.getElementById('merkleDepth').textContent = metrics.merkleTreeDepth;
+      document.getElementById('blockHeight').textContent = metrics.blockHeight.toLocaleString();
+
+      document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+    }
+
+    // Update health status
+    function updateHealth(health) {
+      const statusEl = document.getElementById('overallStatus');
+      statusEl.textContent = health.overall.toUpperCase();
+      statusEl.className = 'status-value ' + health.overall;
+
+      const checksEl = document.getElementById('healthChecks');
+      checksEl.innerHTML = health.checks.map(check => `
+        <li class="health-check">
+          <div class="health-icon ${check.status}"></div>
+          <div>
+            <strong>${check.name}</strong>: ${check.message}
+          </div>
+        </li>
+      `).join('');
+    }
+
+    // Update relayers
+    function updateRelayers(relayers) {
+      if (relayers.length === 0) {
+        document.getElementById('relayerList').innerHTML = '<p style="text-align: center; opacity: 0.7;">No relayer data available</p>';
+        return;
+      }
+
+      document.getElementById('relayerList').innerHTML = relayers.map(relayer => `
+        <div class="relayer-item">
+          <div class="relayer-header">
+            <strong>${relayer.endpoint}</strong>
+            <span class="relayer-status ${relayer.status}">${relayer.status.toUpperCase()}</span>
+          </div>
+          <div class="relayer-stats">
+            <div class="relayer-stat">
+              <div style="opacity: 0.7;">Reputation</div>
+              <div><strong>${relayer.reputation.toFixed(0)}</strong></div>
+            </div>
+            <div class="relayer-stat">
+              <div style="opacity: 0.7;">Success Rate</div>
+              <div><strong>${relayer.successRate.toFixed(1)}%</strong></div>
+            </div>
+            <div class="relayer-stat">
+              <div style="opacity: 0.7;">Avg Response</div>
+              <div><strong>${relayer.avgResponseTime.toFixed(0)}ms</strong></div>
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // Update transaction chart
+    function updateTransactionChart(history) {
+      if (history.length === 0) return;
+
+      const labels = history.map(h => new Date(h.timestamp).toLocaleTimeString());
+      const deposits = history.map(h => h.totalDeposits);
+      const withdrawals = history.map(h => h.totalWithdrawals);
+      const transfers = history.map(h => h.totalPrivateTransfers);
+
+      transactionChart.data.labels = labels;
+      transactionChart.data.datasets[0].data = deposits;
+      transactionChart.data.datasets[1].data = withdrawals;
+      transactionChart.data.datasets[2].data = transfers;
+      transactionChart.update();
+    }
+
+    // Socket event handlers
+    socket.on('connect', () => {
+      console.log('Connected to monitoring server');
+      socket.emit('metrics:request-history', 60);
+      socket.emit('relayers:request');
+    });
+
+    socket.on('metrics:update', (metrics) => {
+      updateMetrics(metrics);
+    });
+
+    socket.on('metrics:history', (history) => {
+      updateTransactionChart(history);
+    });
+
+    socket.on('relayers:data', (relayers) => {
+      updateRelayers(relayers);
+    });
+
+    // Fetch health status periodically
+    async function fetchHealth() {
+      try {
+        const response = await fetch('/api/health');
+        const health = await response.json();
+        updateHealth(health);
+      } catch (error) {
+        console.error('Failed to fetch health:', error);
+      }
+    }
+
+    // Initialize
+    window.addEventListener('load', () => {
+      initCharts();
+      fetchHealth();
+      setInterval(fetchHealth, 30000); // Every 30 seconds
+      setInterval(() => {
+        socket.emit('relayers:request');
+      }, 60000); // Every minute
+    });
+  </script>
+</body>
+</html>

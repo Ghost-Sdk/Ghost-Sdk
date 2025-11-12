@@ -1,0 +1,240 @@
+Ghost Privacy: Production-Ready zkSNARK Privacy for Solana 👻
+
+Privacy is a fundamental right, and Ghost Protocol is bringing battle-tested zero-knowledge technology to Solana developers everywhere.
+
+Ghost Privacy is a complete zkSNARK privacy protocol for Solana, featuring Groth16 proofs, Poseidon hashing, and MLSAG ring signatures. Built with production in mind—from encrypted storage to multi-party trusted setup ceremonies—Ghost gives developers everything needed to build confidential Solana applications.
+
+From Commitments to Anonymous Transactions: The Ghost Advantage
+
+Ghost Protocol combines proven cryptographic primitives into a complete privacy stack:
+
+• Groth16 ZK-SNARKs: Industry-standard succinct proofs with ark-groth16 verification on-chain
+• Poseidon Hashing: ZK-friendly hash function for efficient Merkle trees and commitments
+• MLSAG Ring Signatures: Monero-style anonymity sets for transaction unlinkability
+• PDA Architecture: Scalable nullifier tracking with O(1) lookup, unlimited throughput
+
+This integrated approach means developers get privacy out-of-the-box. No need to wire together cryptographic primitives—Ghost handles the complexity so you can focus on your application.
+
+The Power of Real Cryptography
+
+One of Ghost's main differentiators is its commitment to production-grade implementations—no mocks, no placeholders:
+
+Real Groth16 Verification:
+
+// Actual ark-groth16 verification on-chain
+pub fn verify_groth16_proof(
+    proof: &[u8],
+    public_inputs: &[u8],
+    vk: &VerifyingKey
+) -> Result<bool> {
+    let proof = Proof::deserialize(proof)?;
+    let inputs = PublicInputs::deserialize(public_inputs)?;
+
+    Groth16::verify(&vk, &inputs, &proof)
+        .map_err(|_| PrivacyError::InvalidProof)
+}
+
+Real MLSAG Ring Signatures:
+
+// Monero-style ring signature verification
+pub fn verify_mlsag(
+    message: &[u8],
+    ring: &[PublicKey],
+    signature: &MLSAGSignature
+) -> bool {
+    mlsag::verify(message, ring, signature)
+}
+
+No SHA256 placeholders pretending to be Poseidon. No simulated proofs. Every cryptographic operation uses the real algorithms that provide actual security guarantees.
+
+Building from Production Requirements
+
+Ghost was designed from day one for real deployments, not just demos:
+
+// Environment-based configuration
+process.env.GHOST_ENV = 'mainnet';
+process.env.GHOST_STORAGE_PASSWORD = 'strong-password';
+
+const sdk = new GhostPrivacySDK({
+  password: process.env.GHOST_STORAGE_PASSWORD
+});
+
+// Encrypted AES-256-GCM storage
+// Configuration validation
+// Ceremony verification enforcement
+await sdk.initialize();
+
+// Deposit with encrypted notes
+const note = await sdk.deposit(payer, 1.0, owner);
+
+// Anonymous withdrawal via relayer
+const signature = await sdk.withdrawViaRelayer(
+  note,
+  recipient,
+  1.0
+);
+
+Each component addresses real production concerns: encrypted storage with password protection, environment separation, automated deployment validation, and comprehensive security checks.
+
+Production Infrastructure That Actually Works
+
+Ghost includes enterprise-grade infrastructure that removes "educational" characteristics:
+
+Encrypted Storage System:
+• AES-256-GCM authenticated encryption for all sensitive data
+• scrypt-based key derivation with unique salts
+• Secure deletion with random data overwrite
+• Backup and restore with verification
+
+Configuration Management:
+• Environment-based config (devnet/mainnet/testnet/localnet)
+• Zero hardcoded values—everything from environment or files
+• Strict validation enforces ceremony completion for mainnet
+• Cannot deploy without proper security settings
+
+Production Readiness Validation:
+• Comprehensive pre-deployment checks
+• Validates configuration, ceremony, circuits, program, security
+• Exits with error if critical checks fail
+• Blocks mainnet deployment until all requirements met
+
+Multi-Party Trusted Setup:
+
+The ceremony coordinator enables real distributed ceremonies:
+
+# Coordinator server
+cd ceremony-coordinator
+npm start
+
+# Participants contribute independently
+npm run participant
+
+No simulated participants. No automated fake contributions. Ghost's ceremony infrastructure is built for actual independent participants contributing real randomness—requiring only ONE honest participant for security.
+
+Circuits: Real Implementations, Real Security
+
+Ghost circuits implement proven privacy patterns with actual cryptographic soundness:
+
+Private Transfer Circuit (transfer.circom):
+• Proves valid spend of commitment without revealing amount
+• Merkle path verification with Poseidon hashing
+• Nullifier generation for double-spend prevention
+• 130 lines of battle-tested logic
+
+Balance Proof Circuit (balance.circom):
+• Range proof showing balance ≥ threshold
+• Zero-knowledge balance verification
+• 54 lines, highly optimized
+
+Ring Signature Circuit (ring_signature.circom):
+• 11-member anonymity sets
+• Proves membership without revealing which member
+• Monero-style key image verification
+• 128 lines implementing MLSAG
+
+All circuits use Poseidon instead of SHA256 for ZK efficiency. All proofs verify with real Groth16 on-chain. All commitments use proper hiding schemes.
+
+Solana Integration: Native and Efficient
+
+Ghost's on-chain program leverages Solana's architecture for maximum efficiency:
+
+// PDA-based nullifier storage (O(1), unlimited scale)
+#[account]
+pub struct NullifierAccount {
+    pub nullifier: [u8; 32],
+    pub spent_at: i64,
+    pub tx_signature: [u8; 64],
+}
+
+// Derive PDA from nullifier
+let (nullifier_pda, _) = Pubkey::find_program_address(
+    &[b"nullifier", nullifier.as_ref()],
+    program_id
+);
+
+// O(1) double-spend check
+if nullifier_pda exists -> already spent
+else -> create account
+
+This architecture eliminates on-chain storage limits. Every nullifier gets its own PDA. Verification is constant-time. The system scales to unlimited transaction volume.
+
+Relayer Network: Privacy Without Compromise
+
+Ghost includes a production relayer system with reputation scoring:
+
+// Anonymous withdrawal through relayer
+await sdk.withdrawViaRelayer(
+  note,
+  recipient,
+  amount,
+  'https://relayer.ghostprivacy.io'
+);
+
+Relayers submit transactions on behalf of users, completely hiding the connection between deposits and withdrawals. The reputation system prevents malicious relayers while maintaining decentralization.
+
+SDK: Complete Privacy Abstraction
+
+The Ghost SDK handles all complexity, giving developers a clean interface:
+
+import { GhostPrivacySDK } from '@ghost/sdk';
+
+const sdk = new GhostPrivacySDK();
+await sdk.initialize();
+
+// Deposit SOL into shielded pool
+const note = await sdk.deposit(
+  payer,
+  1.0,  // SOL amount
+  ownerAddress
+);
+
+// Private transfer (shielded → shielded)
+const { txSignature, newNote } = await sdk.privateTransfer(
+  payer,
+  fromNote,
+  recipientAddress,
+  0.5  // SOL amount
+);
+
+// Withdraw to public wallet
+await sdk.withdraw(
+  payer,
+  note,
+  recipientPublicKey,
+  1.0
+);
+
+// Check shielded balance
+const balance = sdk.getBalance(ownerAddress);
+
+All ZK proof generation, Merkle tree updates, nullifier tracking, and on-chain interaction handled automatically. Developers work with simple deposit/transfer/withdraw operations.
+
+Deployment Safety: Automated Validation
+
+Before any mainnet deployment, Ghost's readiness checker validates everything:
+
+GHOST_ENV=mainnet ts-node scripts/production-readiness-check.ts
+
+Checks performed:
+✓ Configuration: Environment set to mainnet, program ID configured, RPC URL correct
+✓ Ceremony: Completion required, verification hash set, transcript exists with 3+ participants
+✓ Circuits: All .zkey files exist, file sizes reasonable, verification keys present
+✓ Program: Solana program built, binary exists
+✓ Security: Encryption enabled, no sensitive files committed, .gitignore configured
+✓ Documentation: README, setup guides, ceremony docs complete
+
+Exit code 0: Ready for mainnet
+Exit code 1: Critical failures—deployment blocked
+
+This automation prevents deployment mistakes. No ceremony? Blocked. Hardcoded dev keys? Blocked. Missing verification hash? Blocked.
+
+Start Building Private Solana Apps Today
+
+Ghost Privacy is open source and ready for developers:
+
+Repository: https://github.com/Ghost-Sdk/Ghost-Sdk
+Documentation: Complete guides in PRODUCTION_SETUP.md and TRUSTED_SETUP.md
+Ceremony Tools: Full coordinator and participant CLI included
+License: MIT
+
+Join the privacy revolution on Solana. 👻
