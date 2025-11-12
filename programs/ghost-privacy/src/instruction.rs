@@ -38,7 +38,8 @@ pub enum PrivacyInstruction {
     /// 0. `[writable]` Pool state
     /// 1. `[writable]` Pool vault
     /// 2. `[writable]` Recipient
-    /// 3. `[]` System program
+    /// 3. `[]` Verification key account (PDA for Transfer circuit)
+    /// 4. `[]` System program
     Withdraw {
         /// ZK proof of ownership
         proof: Vec<u8>,
@@ -78,6 +79,7 @@ pub enum PrivacyInstruction {
     /// Accounts:
     /// 0. `[]` Pool state
     /// 1. `[]` User account
+    /// 2. `[]` Verification key account (PDA for Balance circuit)
     VerifyBalance {
         /// ZK proof of minimum balance
         proof: Vec<u8>,
@@ -110,6 +112,7 @@ pub enum PrivacyInstruction {
     /// 0. `[writable]` Asset state
     /// 1. `[writable]` Sender shielded note
     /// 2. `[writable]` Recipient shielded note
+    /// 3. `[]` Verification key account (PDA for Transfer circuit)
     TransferAsset {
         /// ZK proof of asset transfer
         proof: Vec<u8>,
@@ -121,5 +124,50 @@ pub enum PrivacyInstruction {
         new_commitment: [u8; 32],
         /// Encrypted amount and memo
         encrypted_data: Vec<u8>,
+    },
+
+    /// Store verification key for a circuit type
+    ///
+    /// Accounts:
+    /// 0. `[writable]` Verification key account (PDA)
+    /// 1. `[writable]` Pool state
+    /// 2. `[signer]` Pool authority
+    /// 3. `[]` System program
+    StoreVerificationKey {
+        /// Circuit type (Transfer, Balance, or RingSignature)
+        circuit_type: u8,
+        /// Serialized verification key (ark-groth16 VerifyingKey<Bn254>)
+        vk_data: Vec<u8>,
+    },
+
+    /// Register a new relayer in the network
+    ///
+    /// Accounts:
+    /// 0. `[writable]` Relayer account (PDA)
+    /// 1. `[signer, writable]` Relayer wallet
+    /// 2. `[]` System program
+    RegisterRelayer {
+        /// Service endpoint (URL or IP)
+        endpoint: String,
+        /// Stake amount
+        stake: u64,
+    },
+
+    /// Update relayer heartbeat
+    ///
+    /// Accounts:
+    /// 0. `[writable]` Relayer account (PDA)
+    /// 1. `[signer]` Relayer wallet
+    UpdateHeartbeat,
+
+    /// Report relay success/failure (updates reputation)
+    ///
+    /// Accounts:
+    /// 0. `[writable]` Relayer account (PDA)
+    /// 1. `[]` Pool state (for verification)
+    /// 2. `[signer]` Pool authority or relayer
+    ReportRelay {
+        /// Was relay successful?
+        success: bool,
     },
 }

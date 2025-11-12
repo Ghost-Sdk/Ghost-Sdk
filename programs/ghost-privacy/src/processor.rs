@@ -1,7 +1,7 @@
 use crate::{
     error::PrivacyError,
     instruction::PrivacyInstruction,
-    state::{AssetState, Commitment, PoolState, ShieldedNote},
+    state::{AssetState, Commitment, PoolState, ShieldedNote, VerificationKeyAccount, CircuitType, RelayerAccount},
     verifier,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -125,6 +125,40 @@ impl Processor {
                     encrypted_data,
                 )
             }
+            PrivacyInstruction::StoreVerificationKey {
+                circuit_type,
+                vk_data,
+            } => {
+                msg!("Instruction: StoreVerificationKey");
+                Self::process_store_verification_key(
+                    program_id,
+                    accounts,
+                    circuit_type,
+                    vk_data,
+                )
+            }
+            PrivacyInstruction::RegisterRelayer {
+                endpoint,
+                stake,
+            } => {
+                msg!("Instruction: RegisterRelayer");
+                Self::process_register_relayer(
+                    program_id,
+                    accounts,
+                    endpoint,
+                    stake,
+                )
+            }
+            PrivacyInstruction::UpdateHeartbeat => {
+                msg!("Instruction: UpdateHeartbeat");
+                Self::process_update_heartbeat(program_id, accounts)
+            }
+            PrivacyInstruction::ReportRelay {
+                success,
+            } => {
+                msg!("Instruction: ReportRelay");
+                Self::process_report_relay(program_id, accounts, success)
+            }
         }
     }
 
@@ -183,6 +217,8 @@ impl Processor {
             tvl: 0,
             used_nullifiers: Vec::new(),
             used_key_images: Vec::new(),
+            nullifier_count: 0,
+            key_image_count: 0,
             vault: vault_pubkey,
             is_initialized: true,
         };
@@ -258,6 +294,7 @@ impl Processor {
         let pool_account = next_account_info(account_info_iter)?;
         let vault = next_account_info(account_info_iter)?;
         let recipient_account = next_account_info(account_info_iter)?;
+        let vk_account = next_account_info(account_info_iter)?;
         let system_program = next_account_info(account_info_iter)?;
 
         // Load pool state (use deserialize instead of try_from_slice to handle extra bytes)
@@ -288,7 +325,10 @@ impl Processor {
             new_commitment.unwrap_or([0u8; 32]).to_vec(),
         ];
 
-        if !verifier::verify_transfer_proof(&proof, &public_inputs)? {
+        // Load VK account data
+        let vk_account_data = &vk_account.data.borrow();
+
+        if !verifier::verify_transfer_proof(&proof, &public_inputs, vk_account_data)? {
             return Err(PrivacyError::InvalidProof.into());
         }
 
@@ -370,13 +410,21 @@ impl Processor {
         min_balance: u64,
         balance_commitment: [u8; 32],
     ) -> ProgramResult {
+        let account_info_iter = &mut accounts.iter();
+        let _pool_account = next_account_info(account_info_iter)?;
+        let _user_account = next_account_info(account_info_iter)?;
+        let vk_account = next_account_info(account_info_iter)?;
+
         // Verify balance proof
         let public_inputs = vec![
             min_balance.to_le_bytes().to_vec(),
             balance_commitment.to_vec(),
         ];
 
-        if !verifier::verify_balance_proof(&proof, &public_inputs)? {
+        // Load VK account data
+        let vk_account_data = &vk_account.data.borrow();
+
+        if !verifier::verify_balance_proof(&proof, &public_inputs, vk_account_data)? {
             return Err(PrivacyError::InvalidProof.into());
         }
 
@@ -447,6 +495,7 @@ impl Processor {
         let asset_account = next_account_info(account_info_iter)?;
         let sender_note = next_account_info(account_info_iter)?;
         let recipient_note = next_account_info(account_info_iter)?;
+        let vk_account = next_account_info(account_info_iter)?;
 
         // Load asset state
         let mut asset_state = AssetState::try_from_slice(&asset_account.data.borrow())?;
@@ -468,7 +517,10 @@ impl Processor {
             new_commitment.to_vec(),
         ];
 
-        if !verifier::verify_transfer_proof(&proof, &public_inputs)? {
+        // Load VK account data
+        let vk_account_data = &vk_account.data.borrow();
+
+        if !verifier::verify_transfer_proof(&proof, &public_inputs, vk_account_data)? {
             return Err(PrivacyError::InvalidProof.into());
         }
 
@@ -485,6 +537,279 @@ impl Processor {
         msg!("  Asset ID: {:?}", asset_id);
         msg!("  Nullifier: {:?}", nullifier);
         msg!("  New commitment: {:?}", new_commitment);
+
+        Ok(())
+    }
+
+    fn process_store_verification_key(
+        program_id: &Pubkey,
+        accounts: &[AccountInfo],
+        circuit_type: u8,
+        vk_data: Vec<u8>,
+    ) -> ProgramResult {
+        let account_info_iter = &mut accounts.iter();
+        let vk_account = next_account_info(account_info_iter)?;
+        let pool_account = next_account_info(account_info_iter)?;
+        let authority = next_account_info(account_info_iter)?;
+        let system_program = next_account_info(account_info_iter)?;
+
+        // Verify authority is signer
+        if !authority.is_signer {
+            return Err(ProgramError::MissingRequiredSignature);
+        }
+
+        // Load pool state to verify authority
+        let pool_state = PoolState::deserialize(&mut &pool_account.data.borrow()[..])?;
+
+        if !pool_state.is_initialized {
+            return Err(PrivacyError::PoolNotInitialized.into());
+        }
+
+        // Verify authority matches pool authority
+        if pool_state.authority != *authority.key {
+            return Err(PrivacyError::Unauthorized.into());
+        }
+
+        // Validate VK data size
+        if vk_data.is_empty() || vk_data.len() > VerificationKeyAccount::MAX_VK_SIZE {
+            msg!("Invalid VK data size: {} bytes (max {})", vk_data.len(), VerificationKeyAccount::MAX_VK_SIZE);
+            return Err(PrivacyError::InvalidVerificationKey.into());
+        }
+
+        // Parse circuit type
+        let circuit_type_enum = match circuit_type {
+            0 => CircuitType::Transfer,
+            1 => CircuitType::Balance,
+            2 => CircuitType::RingSignature,
+            _ => return Err(PrivacyError::InvalidAccountData.into()),
+        };
+
+        // Derive VK PDA address
+        let (vk_pubkey, bump) = VerificationKeyAccount::derive_address(
+            pool_account.key,
+            circuit_type_enum,
+            program_id,
+        );
+
+        // Verify provided account matches derived PDA
+        if vk_account.key != &vk_pubkey {
+            msg!("VK account mismatch: expected {}, got {}", vk_pubkey, vk_account.key);
+            return Err(ProgramError::InvalidAccountData);
+        }
+
+        // Create VK account if it doesn't exist
+        if vk_account.lamports() == 0 {
+            let space = VerificationKeyAccount::LEN;
+            let rent = Rent::get()?.minimum_balance(space);
+
+            msg!("Creating VK account: {} bytes, {} lamports rent", space, rent);
+
+            invoke_signed(
+                &system_instruction::create_account(
+                    authority.key,
+                    &vk_pubkey,
+                    rent,
+                    space as u64,
+                    program_id,
+                ),
+                &[authority.clone(), vk_account.clone(), system_program.clone()],
+                &[&[
+                    match circuit_type_enum {
+                        CircuitType::Transfer => b"vk_transfer",
+                        CircuitType::Balance => b"vk_balance",
+                        CircuitType::RingSignature => b"vk_ring_sig",
+                    },
+                    pool_account.key.as_ref(),
+                    &[bump],
+                ]],
+            )?;
+        }
+
+        // Get current timestamp
+        let clock = solana_program::clock::Clock::get()?;
+        let stored_at = clock.unix_timestamp;
+
+        // Initialize VK account
+        let vk_account_state = VerificationKeyAccount {
+            circuit_type: circuit_type_enum,
+            pool: *pool_account.key,
+            authority: *authority.key,
+            vk_data,
+            stored_at,
+            bump,
+        };
+
+        // Serialize and save
+        vk_account_state.serialize(&mut *vk_account.data.borrow_mut())?;
+
+        msg!("Verification key stored successfully");
+        msg!("  Circuit type: {:?}", circuit_type_enum);
+        msg!("  VK account: {}", vk_pubkey);
+        msg!("  VK data size: {} bytes", vk_account_state.vk_data.len());
+
+        Ok(())
+    }
+
+    fn process_register_relayer(
+        program_id: &Pubkey,
+        accounts: &[AccountInfo],
+        endpoint: String,
+        stake: u64,
+    ) -> ProgramResult {
+        let account_info_iter = &mut accounts.iter();
+        let relayer_account = next_account_info(account_info_iter)?;
+        let relayer_wallet = next_account_info(account_info_iter)?;
+        let system_program = next_account_info(account_info_iter)?;
+
+        // Verify relayer wallet is signer
+        if !relayer_wallet.is_signer {
+            return Err(ProgramError::MissingRequiredSignature);
+        }
+
+        // Validate endpoint length
+        if endpoint.is_empty() || endpoint.len() > RelayerAccount::MAX_ENDPOINT_LEN {
+            msg!("Invalid endpoint length: {} (max {})", endpoint.len(), RelayerAccount::MAX_ENDPOINT_LEN);
+            return Err(PrivacyError::InvalidAccountData.into());
+        }
+
+        // Validate minimum stake (0.1 SOL)
+        if stake < 100_000_000 {
+            msg!("Insufficient stake: {} lamports (minimum 0.1 SOL)", stake);
+            return Err(PrivacyError::InvalidAmount.into());
+        }
+
+        // Derive relayer PDA
+        let (relayer_pubkey, bump) = RelayerAccount::derive_address(
+            relayer_wallet.key,
+            program_id,
+        );
+
+        // Verify provided account matches derived PDA
+        if relayer_account.key != &relayer_pubkey {
+            msg!("Relayer account mismatch: expected {}, got {}", relayer_pubkey, relayer_account.key);
+            return Err(ProgramError::InvalidAccountData);
+        }
+
+        // Check if relayer already registered
+        if relayer_account.lamports() > 0 {
+            msg!("Relayer already registered");
+            return Err(PrivacyError::InvalidAccountData.into());
+        }
+
+        // Create relayer account
+        let space = RelayerAccount::LEN;
+        let rent = Rent::get()?.minimum_balance(space);
+
+        msg!("Creating relayer account: {} bytes, {} lamports rent", space, rent);
+
+        invoke_signed(
+            &system_instruction::create_account(
+                relayer_wallet.key,
+                &relayer_pubkey,
+                rent + stake, // Account rent + stake
+                space as u64,
+                program_id,
+            ),
+            &[relayer_wallet.clone(), relayer_account.clone(), system_program.clone()],
+            &[&[b"relayer", relayer_wallet.key.as_ref(), &[bump]]],
+        )?;
+
+        // Get current timestamp
+        let clock = solana_program::clock::Clock::get()?;
+        let current_time = clock.unix_timestamp;
+
+        // Initialize relayer account
+        let relayer_state = RelayerAccount {
+            relayer: *relayer_wallet.key,
+            stake,
+            successful_relays: 0,
+            failed_relays: 0,
+            last_heartbeat: current_time,
+            is_active: true,
+            registered_at: current_time,
+            endpoint,
+            bump,
+        };
+
+        // Serialize and save
+        relayer_state.serialize(&mut *relayer_account.data.borrow_mut())?;
+
+        msg!("Relayer registered successfully");
+        msg!("  Relayer: {}", relayer_wallet.key);
+        msg!("  Stake: {} SOL", stake as f64 / 1_000_000_000.0);
+        msg!("  Endpoint: {}", relayer_state.endpoint);
+
+        Ok(())
+    }
+
+    fn process_update_heartbeat(
+        program_id: &Pubkey,
+        accounts: &[AccountInfo],
+    ) -> ProgramResult {
+        let account_info_iter = &mut accounts.iter();
+        let relayer_account = next_account_info(account_info_iter)?;
+        let relayer_wallet = next_account_info(account_info_iter)?;
+
+        // Verify relayer wallet is signer
+        if !relayer_wallet.is_signer {
+            return Err(ProgramError::MissingRequiredSignature);
+        }
+
+        // Load relayer state
+        let mut relayer_state = RelayerAccount::deserialize(&mut &relayer_account.data.borrow()[..])?;
+
+        // Verify relayer matches
+        if relayer_state.relayer != *relayer_wallet.key {
+            return Err(PrivacyError::Unauthorized.into());
+        }
+
+        // Update heartbeat
+        let clock = solana_program::clock::Clock::get()?;
+        relayer_state.last_heartbeat = clock.unix_timestamp;
+
+        // Save state
+        relayer_state.serialize(&mut *relayer_account.data.borrow_mut())?;
+
+        msg!("Heartbeat updated for relayer {}", relayer_wallet.key);
+
+        Ok(())
+    }
+
+    fn process_report_relay(
+        program_id: &Pubkey,
+        accounts: &[AccountInfo],
+        success: bool,
+    ) -> ProgramResult {
+        let account_info_iter = &mut accounts.iter();
+        let relayer_account = next_account_info(account_info_iter)?;
+        let _pool_account = next_account_info(account_info_iter)?;
+        let authority = next_account_info(account_info_iter)?;
+
+        // Verify authority is signer
+        if !authority.is_signer {
+            return Err(ProgramError::MissingRequiredSignature);
+        }
+
+        // Load relayer state
+        let mut relayer_state = RelayerAccount::deserialize(&mut &relayer_account.data.borrow()[..])?;
+
+        // Update reputation
+        if success {
+            relayer_state.successful_relays += 1;
+        } else {
+            relayer_state.failed_relays += 1;
+        }
+
+        // Calculate new reputation
+        let reputation = relayer_state.reputation_score();
+
+        // Save state
+        relayer_state.serialize(&mut *relayer_account.data.borrow_mut())?;
+
+        msg!("Relay reported: {}", if success { "SUCCESS" } else { "FAILED" });
+        msg!("  Relayer: {}", relayer_state.relayer);
+        msg!("  New reputation: {}/100", reputation);
+        msg!("  Success: {}, Failed: {}", relayer_state.successful_relays, relayer_state.failed_relays);
 
         Ok(())
     }

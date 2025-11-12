@@ -321,3 +321,143 @@ impl KeyImageAccount {
         8 + // timestamp
         1; // bump
 }
+
+/// Verification Key Account (stores Groth16 verification keys)
+/// Each circuit type gets its own VK account for on-chain verification
+#[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
+pub struct VerificationKeyAccount {
+    /// Circuit type identifier
+    pub circuit_type: CircuitType,
+
+    /// Pool this VK belongs to
+    pub pool: Pubkey,
+
+    /// Authority that can update this VK
+    pub authority: Pubkey,
+
+    /// Serialized verification key (ark-groth16 format)
+    /// This is the compressed serialized VerifyingKey<Bn254>
+    pub vk_data: Vec<u8>,
+
+    /// Timestamp when VK was stored
+    pub stored_at: i64,
+
+    /// Bump seed for PDA derivation
+    pub bump: u8,
+}
+
+/// Circuit types for verification
+#[derive(BorshSerialize, BorshDeserialize, Debug, Clone, Copy, PartialEq)]
+pub enum CircuitType {
+    Transfer,
+    Balance,
+    RingSignature,
+}
+
+impl VerificationKeyAccount {
+    pub const MAX_VK_SIZE: usize = 2048; // ~2KB should be sufficient for BN254 VK
+
+    pub const LEN: usize = 1 + // circuit_type (enum)
+        32 + // pool
+        32 + // authority
+        4 + Self::MAX_VK_SIZE + // vk_data (vec)
+        8 + // stored_at
+        1; // bump
+
+    /// Derive VK PDA address
+    pub fn derive_address(
+        pool: &Pubkey,
+        circuit_type: CircuitType,
+        program_id: &Pubkey,
+    ) -> (Pubkey, u8) {
+        let circuit_seed = match circuit_type {
+            CircuitType::Transfer => b"vk_transfer",
+            CircuitType::Balance => b"vk_balance",
+            CircuitType::RingSignature => b"vk_ring_sig",
+        };
+
+        Pubkey::find_program_address(
+            &[circuit_seed, pool.as_ref()],
+            program_id,
+        )
+    }
+}
+
+/// Relayer account for decentralized relay network
+/// Each relayer registers with stake and builds reputation over time
+#[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
+pub struct RelayerAccount {
+    /// Relayer wallet address
+    pub relayer: Pubkey,
+
+    /// Stake amount (for slashing if misbehaves)
+    pub stake: u64,
+
+    /// Total successful relays
+    pub successful_relays: u64,
+
+    /// Total failed relays
+    pub failed_relays: u64,
+
+    /// Last heartbeat timestamp
+    pub last_heartbeat: i64,
+
+    /// Is active (not slashed/banned)
+    pub is_active: bool,
+
+    /// Registration timestamp
+    pub registered_at: i64,
+
+    /// Service endpoint (URL or IP)
+    pub endpoint: String,
+
+    /// Bump seed for PDA
+    pub bump: u8,
+}
+
+impl RelayerAccount {
+    pub const MAX_ENDPOINT_LEN: usize = 128;
+
+    pub const LEN: usize = 32 + // relayer
+        8 + // stake
+        8 + // successful_relays
+        8 + // failed_relays
+        8 + // last_heartbeat
+        1 + // is_active
+        8 + // registered_at
+        4 + Self::MAX_ENDPOINT_LEN + // endpoint (string)
+        1; // bump
+
+    /// Calculate reputation score (0-100)
+    pub fn reputation_score(&self) -> u8 {
+        if self.successful_relays == 0 && self.failed_relays == 0 {
+            return 50; // Neutral score for new relayers
+        }
+
+        let total = self.successful_relays + self.failed_relays;
+        let success_rate = (self.successful_relays * 100) / total;
+
+        // Cap at 100
+        if success_rate > 100 {
+            100
+        } else {
+            success_rate as u8
+        }
+    }
+
+    /// Check if relayer is online (heartbeat within last 5 minutes)
+    pub fn is_online(&self, current_time: i64) -> bool {
+        self.is_active && (current_time - self.last_heartbeat) < 300 // 5 minutes
+    }
+
+    /// Derive relayer PDA address
+    pub fn derive_address(
+        relayer: &Pubkey,
+        program_id: &Pubkey,
+    ) -> (Pubkey, u8) {
+        Pubkey::find_program_address(
+            &[b"relayer", relayer.as_ref()],
+            program_id,
+        )
+    }
+}

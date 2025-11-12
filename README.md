@@ -115,24 +115,23 @@ const signature = await sdk.withdrawViaRelayer(note, recipient, 1.0);
 | Poseidon Hashing | ✅ Implemented | circomlibjs |
 | Ring Signatures | ✅ Implemented | MLSAG verification |
 | Nullifier Tracking | ✅ Implemented | PDA-based (scalable) |
-| Relayer Network | ✅ Implemented | Rate limiting, replay protection |
+| VK Storage | ✅ Implemented | On-chain PDA accounts |
+| Relayer Network | ✅ Implemented | Decentralized with reputation scoring |
 | Merkle Trees | ✅ Implemented | 20-level Poseidon tree |
 
 ## ⚠️ Known Limitations
 
-1. **Verification keys not stored on-chain** - Currently returns error. Need to implement PDA storage for VKs.
-2. **No multi-party trusted setup** - Proving keys generated with single contribution. Production requires MPC ceremony.
-3. **Relayer is centralized** - Single relayer service. Production needs decentralized relayer network.
-4. **No audit** - Code has not been professionally audited.
-5. **Testing incomplete** - Needs comprehensive circuit tests and BPF tests.
+1. **No multi-party trusted setup** - Proving keys generated with single contribution. Production requires MPC ceremony.
+2. **No audit** - Code has not been professionally audited.
+3. **Testing incomplete** - Needs comprehensive circuit tests and BPF tests.
 
 ## 🛣️ Roadmap to Production
 
 - [ ] Multi-party trusted setup ceremony
-- [ ] Store verification keys in PDA accounts
+- [x] Store verification keys in PDA accounts
+- [x] Decentralized relayer network with reputation system
 - [ ] Professional security audit
 - [ ] Comprehensive test suite (circuits + program)
-- [ ] Decentralized relayer network
 - [ ] Mainnet deployment with TVL limits
 - [ ] Bug bounty program
 
@@ -147,6 +146,13 @@ const signature = await sdk.withdrawViaRelayer(note, recipient, 1.0);
 - `programs/ghost-privacy/src/verifier.rs` - Cryptographic verification
 - `programs/ghost-privacy/src/state.rs` - On-chain state management
 - `programs/ghost-privacy/src/processor.rs` - Instruction processing
+
+### Trusted Setup
+- `TRUSTED_SETUP.md` - Complete guide for multi-party ceremony
+  - Phase 1: Powers of Tau ceremony
+  - Phase 2: Circuit-specific setup
+  - Security best practices
+  - Participant guidelines
 
 ## 🤝 Contributing
 

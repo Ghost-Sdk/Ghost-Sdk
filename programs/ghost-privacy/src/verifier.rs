@@ -6,7 +6,7 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_ff::PrimeField;
 
 /// Verify Groth16 ZK-SNARK proof for transfer using ark-groth16
-pub fn verify_transfer_proof(proof: &[u8], public_inputs: &[Vec<u8>]) -> Result<bool, ProgramError> {
+pub fn verify_transfer_proof(proof: &[u8], public_inputs: &[Vec<u8>], vk_account_data: &[u8]) -> Result<bool, ProgramError> {
     msg!("Verifying transfer proof with ark-groth16...");
     msg!("  Proof size: {} bytes", proof.len());
     msg!("  Public inputs: {}", public_inputs.len());
@@ -33,9 +33,8 @@ pub fn verify_transfer_proof(proof: &[u8], public_inputs: &[Vec<u8>]) -> Result<
     // Deserialize public inputs as field elements
     let field_inputs = deserialize_field_elements(public_inputs)?;
 
-    // Load verification key (in production, this would be stored in a PDA)
-    // For now, we embed it or load from program data
-    let vk = load_transfer_verification_key()?;
+    // Load verification key from PDA account
+    let vk = load_verification_key_from_account(vk_account_data)?;
 
     // Prepare verification key for efficient verification
     let pvk = prepare_verifying_key(&vk);
@@ -57,7 +56,7 @@ pub fn verify_transfer_proof(proof: &[u8], public_inputs: &[Vec<u8>]) -> Result<
 }
 
 /// Verify balance proof using ark-groth16
-pub fn verify_balance_proof(proof: &[u8], public_inputs: &[Vec<u8>]) -> Result<bool, ProgramError> {
+pub fn verify_balance_proof(proof: &[u8], public_inputs: &[Vec<u8>], vk_account_data: &[u8]) -> Result<bool, ProgramError> {
     msg!("Verifying balance proof with ark-groth16...");
     msg!("  Proof size: {} bytes", proof.len());
     msg!("  Public inputs: {}", public_inputs.len());
@@ -83,8 +82,8 @@ pub fn verify_balance_proof(proof: &[u8], public_inputs: &[Vec<u8>]) -> Result<b
     // Deserialize public inputs as field elements
     let field_inputs = deserialize_field_elements(public_inputs)?;
 
-    // Load verification key
-    let vk = load_balance_verification_key()?;
+    // Load verification key from PDA account
+    let vk = load_verification_key_from_account(vk_account_data)?;
 
     // Prepare verification key
     let pvk = prepare_verifying_key(&vk);
@@ -191,28 +190,46 @@ pub fn verify_ring_signature(
     Ok(true)
 }
 
-/// Load transfer verification key
-/// In production, this would be stored in a PDA and loaded from account data
-fn load_transfer_verification_key() -> Result<VerifyingKey<Bn254>, ProgramError> {
-    // TODO: In production, load from a PDA account
-    // For now, this is a placeholder that would be replaced with actual VK loading
-    // The VK should be stored during program initialization
-    //
-    // Example implementation:
-    // let vk_account = next_account_info(account_iter)?;
-    // let vk_data = vk_account.try_borrow_data()?;
-    // VerifyingKey::deserialize_compressed(&vk_data[..])
-    //     .map_err(|_| PrivacyError::InvalidVerificationKey)?
+/// Load transfer verification key from PDA account
+///
+/// Expects VK account data in the following format (see VerificationKeyAccount):
+/// - circuit_type: u8
+/// - pool: Pubkey (32 bytes)
+/// - authority: Pubkey (32 bytes)
+/// - vk_data: Vec<u8> (length-prefixed)
+/// - stored_at: i64
+/// - bump: u8
+pub fn load_verification_key_from_account(
+    vk_account_data: &[u8],
+) -> Result<VerifyingKey<Bn254>, ProgramError> {
+    use crate::state::VerificationKeyAccount;
 
-    msg!("Warning: Using placeholder verification key. In production, load from PDA.");
-    Err(PrivacyError::InvalidVerificationKey.into())
+    // Deserialize the VK account
+    let vk_account = VerificationKeyAccount::try_from_slice(vk_account_data)
+        .map_err(|e| {
+            msg!("Error deserializing VK account: {:?}", e);
+            PrivacyError::InvalidVerificationKey
+        })?;
+
+    // Deserialize the verification key from the stored data
+    let vk = VerifyingKey::<Bn254>::deserialize_compressed(&vk_account.vk_data[..])
+        .map_err(|e| {
+            msg!("Error deserializing verification key: {:?}", e);
+            PrivacyError::InvalidVerificationKey
+        })?;
+
+    msg!("✓ Verification key loaded successfully from PDA");
+    Ok(vk)
 }
 
-/// Load balance verification key
-fn load_balance_verification_key() -> Result<VerifyingKey<Bn254>, ProgramError> {
-    // TODO: In production, load from a PDA account
-    msg!("Warning: Using placeholder verification key. In production, load from PDA.");
-    Err(PrivacyError::InvalidVerificationKey.into())
+/// Load transfer verification key (helper function for backward compatibility)
+fn load_transfer_verification_key_from_data(vk_data: &[u8]) -> Result<VerifyingKey<Bn254>, ProgramError> {
+    load_verification_key_from_account(vk_data)
+}
+
+/// Load balance verification key (helper function for backward compatibility)
+fn load_balance_verification_key_from_data(vk_data: &[u8]) -> Result<VerifyingKey<Bn254>, ProgramError> {
+    load_verification_key_from_account(vk_data)
 }
 
 /// Deserialize field elements from bytes to Fr (BN254 field elements)
