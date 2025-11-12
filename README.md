@@ -14,7 +14,7 @@
 
 # Ghost Privacy Protocol
 
-* zero-knowledge privacy protocol for Solana**
+** zero-knowledge privacy protocol for Solana**
 
 Groth16 ZK-SNARKs • Poseidon Hashing • MLSAG Ring Signatures
 
